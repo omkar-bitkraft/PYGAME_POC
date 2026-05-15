@@ -5,6 +5,7 @@ DISPLAY_NUMBER="${DISPLAY:-:99}"
 VNC_PORT="${VNC_PORT:-5900}"
 NOVNC_PORT="${NOVNC_PORT:-6080}"
 WORKDIR_PATH="${RUNTIME_WORKDIR:-/opt/runtime/workdir}"
+BOOTSTRAP_PATH="${RUNTIME_BOOTSTRAP_DIR:-/opt/runtime/bootstrap-workdir}"
 MAIN_FILE="${WORKDIR_PATH}/main.py"
 
 cleanup() {
@@ -28,8 +29,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [[ ! -f "${MAIN_FILE}" ]]; then
-  echo "launcher: missing runtime entrypoint at ${MAIN_FILE}" >&2
-  exit 1
+  if [[ -f "${BOOTSTRAP_PATH}/main.py" ]]; then
+    echo "launcher: seeding runtime entrypoint from ${BOOTSTRAP_PATH}/main.py"
+    mkdir -p "${WORKDIR_PATH}"
+    cp "${BOOTSTRAP_PATH}/main.py" "${MAIN_FILE}"
+  else
+    echo "launcher: missing runtime entrypoint at ${MAIN_FILE}" >&2
+    exit 1
+  fi
 fi
 
 echo "launcher: starting Xvfb on ${DISPLAY_NUMBER}"

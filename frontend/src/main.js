@@ -108,6 +108,7 @@ const state = {
   currentRunId: null,
   viewerUrl: null,
   viewerWsUrl: null,
+  viewerMountedRunId: null,
   isSubmitting: false,
   stream: null,
   streamRunId: null
@@ -194,25 +195,55 @@ function buildViewerUrl(runWsUrl, nextRunId = "") {
   return viewerTarget.toString();
 }
 
-function updateViewer(runWsUrl, nextRunId = "") {
-  if (runWsUrl) {
-    state.viewerWsUrl = runWsUrl;
-    state.viewerUrl = buildViewerUrl(runWsUrl, nextRunId);
-    viewerUrl.textContent = state.viewerWsUrl;
-    viewerFrame.removeAttribute("srcdoc");
-    viewerFrame.src = state.viewerUrl;
-    viewerStatus.textContent = "viewer connecting";
-    appendLog("status", `Viewer websocket target set to ${state.viewerWsUrl}`);
-    return;
-  }
-
+function clearViewer() {
   state.viewerUrl = null;
   state.viewerWsUrl = null;
+  state.viewerMountedRunId = null;
   viewerUrl.textContent = "not connected";
   viewerStatus.textContent = "waiting for run";
   setViewerPlaceholder(
     "The iframe region is idle. Start a run to attach the local noVNC viewer."
   );
+}
+
+function prepareViewer(runWsUrl, nextRunId = "") {
+  if (!runWsUrl) {
+    clearViewer();
+    return;
+  }
+
+  state.viewerWsUrl = runWsUrl;
+  state.viewerUrl = buildViewerUrl(runWsUrl, nextRunId);
+  state.viewerMountedRunId = null;
+  viewerUrl.textContent = `${state.viewerWsUrl} (pending)`;
+  viewerStatus.textContent = "waiting for viewer";
+  setViewerPlaceholder(
+    "Runtime is starting. The viewer will attach when the websocket is ready."
+  );
+}
+
+function mountViewer(nextRunId = state.currentRunId) {
+  if (!state.viewerWsUrl) {
+    clearViewer();
+    return;
+  }
+
+  const nextViewerUrl = buildViewerUrl(state.viewerWsUrl, nextRunId || "");
+  if (
+    state.viewerMountedRunId === (nextRunId || null) &&
+    state.viewerUrl === nextViewerUrl &&
+    viewerFrame.getAttribute("src") === nextViewerUrl
+  ) {
+    return;
+  }
+
+  state.viewerUrl = nextViewerUrl;
+  state.viewerMountedRunId = nextRunId || null;
+  viewerUrl.textContent = state.viewerWsUrl;
+  viewerFrame.removeAttribute("srcdoc");
+  viewerFrame.src = nextViewerUrl;
+  viewerStatus.textContent = "viewer connecting";
+  appendLog("status", `Viewer websocket target set to ${state.viewerWsUrl}`);
 }
 
 function setBusy(isBusy) {
@@ -241,8 +272,6 @@ function handleStreamEvent(type, rawPayload) {
 
   if (type === "status") {
     runtimeStatus.textContent = payload.status || "unknown";
-    viewerStatus.textContent =
-      payload.status === "running" ? "runtime running" : payload.status || "unknown";
 
     if (payload.message) {
       appendLog("status", payload.message);
@@ -251,6 +280,17 @@ function handleStreamEvent(type, rawPayload) {
     if (payload.runId) {
       runId.textContent = payload.runId;
       state.currentRunId = payload.runId;
+    }
+
+    if (payload.status === "running") {
+      mountViewer(payload.runId || state.currentRunId);
+      return;
+    }
+
+    if (state.viewerWsUrl && !state.viewerMountedRunId) {
+      viewerStatus.textContent = "waiting for viewer";
+    } else {
+      viewerStatus.textContent = payload.status || "unknown";
     }
 
     return;
@@ -269,7 +309,7 @@ function handleStreamEvent(type, rawPayload) {
     viewerStatus.textContent = payload.reason === "completed" ? "completed" : "stopped";
     runtimeStatus.textContent =
       payload.reason === "completed" ? "exited" : payload.reason || "stopped";
-    updateViewer(null);
+    clearViewer();
     state.currentRunId = null;
     runId.textContent = "not started";
     closeStream("SSE idle");
@@ -361,14 +401,17 @@ async function loadHealth() {
     if (payload.activeRunId) {
       state.currentRunId = payload.activeRunId;
       runId.textContent = payload.activeRunId;
-      updateViewer(payload.wsUrl || appConfig.defaultViewerWsUrl, payload.activeRunId);
       connectStream(payload.activeRunId);
+      prepareViewer(payload.wsUrl || appConfig.defaultViewerWsUrl, payload.activeRunId);
+      if (payload.runtimeState === "running") {
+        mountViewer(payload.activeRunId);
+      }
       return;
     }
 
     state.currentRunId = null;
     runId.textContent = "not started";
-    updateViewer(null);
+    clearViewer();
   } catch (error) {
     backendStatus.textContent = "Unavailable";
     runtimeStatus.textContent = "unknown";
@@ -398,7 +441,7 @@ async function handleRun() {
     runId.textContent = state.currentRunId || "unknown";
     runtimeStatus.textContent = payload.status || "starting";
     backendStatus.textContent = "Reachable";
-    updateViewer(payload.wsUrl || appConfig.defaultViewerWsUrl, state.currentRunId);
+    prepareViewer(payload.wsUrl || appConfig.defaultViewerWsUrl, state.currentRunId);
     transportStatus.textContent = "SSE connecting";
     appendLog(
       "stdout",
@@ -414,7 +457,7 @@ async function handleRun() {
     backendStatus.textContent = "Reachable";
     runtimeStatus.textContent = "error";
     runId.textContent = "not started";
-    updateViewer("");
+    clearViewer();
     appendLog("stderr", `Run failed: ${error.message}`);
   } finally {
     setBusy(false);
@@ -431,7 +474,7 @@ async function handleStop() {
     runId.textContent = "not started";
     runtimeStatus.textContent = payload.status || "stopped";
     viewerStatus.textContent = "stopped";
-    updateViewer(null);
+    clearViewer();
     appendLog("stdout", `Stop acknowledged with status=${payload.status || "stopped"}`);
   } catch (error) {
     runtimeStatus.textContent = "error";
@@ -444,10 +487,10 @@ async function handleStop() {
 runButton.addEventListener("click", handleRun);
 stopButton.addEventListener("click", handleStop);
 viewerFrame.addEventListener("load", () => {
-  if (state.viewerUrl) {
+  if (state.viewerUrl && state.viewerMountedRunId) {
     viewerStatus.textContent = "viewer loaded";
   }
 });
 
-updateViewer("");
+clearViewer();
 loadHealth();

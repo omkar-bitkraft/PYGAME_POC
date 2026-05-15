@@ -5,6 +5,7 @@ ENV DISPLAY=:99
 ENV PYTHONUNBUFFERED=1
 ENV RUNTIME_ROOT=/opt/runtime
 ENV RUNTIME_WORKDIR=/opt/runtime/workdir
+ENV RUNTIME_BOOTSTRAP_DIR=/opt/runtime/bootstrap-workdir
 ENV VNC_PORT=5900
 ENV NOVNC_PORT=6080
 
@@ -27,11 +28,12 @@ RUN pip install --no-cache-dir pygame==2.6.1 \
     && pip install --no-cache-dir --no-deps websockify==0.13.0
 
 RUN mkdir -p "${RUNTIME_WORKDIR}"
+RUN mkdir -p "${RUNTIME_BOOTSTRAP_DIR}"
 
 WORKDIR ${RUNTIME_ROOT}
 
 COPY launcher.sh ${RUNTIME_ROOT}/launcher.sh
-COPY workdir ${RUNTIME_WORKDIR}
+COPY workdir ${RUNTIME_BOOTSTRAP_DIR}
 
 RUN chmod +x ${RUNTIME_ROOT}/launcher.sh
 

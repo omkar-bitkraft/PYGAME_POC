@@ -10,8 +10,7 @@ BACKGROUND_COLOR = (18, 38, 58)
 SHAPE_COLOR = (255, 196, 61)
 TEXT_COLOR = (230, 238, 245)
 FPS = 60
-RUN_SECONDS = 8
-HEARTBEAT_INTERVAL_SECONDS = 1
+HEARTBEAT_INTERVAL_SECONDS = 5
 
 
 def main() -> int:
@@ -26,13 +25,14 @@ def main() -> int:
         f"sample: window created at {WINDOW_WIDTH}x{WINDOW_HEIGHT}",
         flush=True,
     )
+    print("sample: waiting for Stop or window close", flush=True)
 
     start_time = time.time()
     next_heartbeat = start_time
     rect_y = WINDOW_HEIGHT // 2 - 25
     rect_speed = 220
     running = True
-    quit_reason = "timeout"
+    quit_reason = "window_closed"
 
     while running:
         now = time.time()
@@ -42,9 +42,6 @@ def main() -> int:
             if event.type == pygame.QUIT:
                 quit_reason = "window_closed"
                 running = False
-
-        if elapsed >= RUN_SECONDS:
-            running = False
 
         if now >= next_heartbeat:
             print(f"sample: heartbeat {elapsed:.1f}s", flush=True)
@@ -56,9 +53,9 @@ def main() -> int:
         pygame.draw.circle(screen, (81, 150, 244), (120, 120), 48)
         pygame.draw.rect(screen, SHAPE_COLOR, pygame.Rect(rect_x, rect_y, 80, 50))
 
-        label = font.render("Phase 1 deterministic runtime sample", True, TEXT_COLOR)
+        label = font.render("Default sample stays live until Stop", True, TEXT_COLOR)
         timer = font.render(
-            f"Elapsed: {elapsed:0.1f}s / {RUN_SECONDS}s",
+            f"Elapsed: {elapsed:0.1f}s",
             True,
             TEXT_COLOR,
         )

@@ -11,4 +11,4 @@ services:
     ports:
       - "${NOVNC_PORT:-6080}:6080"
     volumes:
-      - ./runtime/workdir:/opt/runtime/workdir
+      - ./.runtime-generated/workdir:/opt/runtime/workdir

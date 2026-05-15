@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
 import { config } from "../config.js";
 import { closeRunStream, createRunStream, emitRunEvent } from "./streamManager.js";
@@ -8,6 +9,9 @@ import { getRuntimeState, setRuntimeState } from "./runtimeState.js";
 const activeRuntime = {
   currentRun: null
 };
+const VIEWER_READY_TIMEOUT_MS = 15000;
+const VIEWER_READY_POLL_INTERVAL_MS = 250;
+const VIEWER_READY_SOCKET_TIMEOUT_MS = 500;
 
 function createError(message, statusCode = 500) {
   const error = new Error(message);
@@ -46,6 +50,59 @@ function safeKill(processHandle) {
   } catch {
     // Ignore cleanup failures for local helper processes.
   }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function canConnectToViewerPort() {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({
+      host: "127.0.0.1",
+      port: config.runtime.novncPort
+    });
+
+    let settled = false;
+
+    function finish(result) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(result);
+    }
+
+    socket.setTimeout(VIEWER_READY_SOCKET_TIMEOUT_MS);
+    socket.once("connect", () => {
+      finish(true);
+    });
+    socket.once("timeout", () => {
+      finish(false);
+    });
+    socket.once("error", () => {
+      finish(false);
+    });
+  });
+}
+
+async function waitForViewerReady(run) {
+  const deadline = Date.now() + VIEWER_READY_TIMEOUT_MS;
+
+  while (!run.cancelled && !run.finalized && Date.now() < deadline) {
+    if (await canConnectToViewerPort()) {
+      return true;
+    }
+
+    await delay(VIEWER_READY_POLL_INTERVAL_MS);
+  }
+
+  return false;
 }
 
 function runDockerCommand(args, options = {}) {
@@ -327,6 +384,35 @@ async function launchRun(run) {
     attachContainerLogs(run);
     watchContainerExit(run);
 
+    emitRunEvent(run.runId, "status", {
+      runId: run.runId,
+      status: "starting",
+      message: `Container ${run.containerId || config.runtime.containerName} is running. Waiting for viewer websocket.`
+    });
+
+    const viewerReady = await waitForViewerReady(run);
+    if (run.cancelled || run.finalized) {
+      return;
+    }
+
+    if (!viewerReady) {
+      const message = `Viewer websocket did not become ready on ${buildWsUrl()} within ${VIEWER_READY_TIMEOUT_MS}ms.`;
+      emitRunEvent(run.runId, "stderr", {
+        runId: run.runId,
+        message
+      });
+
+      finalizeRun(run, {
+        runtimeState: "error",
+        status: "error",
+        message,
+        code: 1,
+        reason: "viewer_startup_timeout"
+      });
+      await removeManagedContainer();
+      return;
+    }
+
     setRuntimeState({
       activeRunId: run.runId,
       runtimeState: "running"
@@ -335,7 +421,7 @@ async function launchRun(run) {
     emitRunEvent(run.runId, "status", {
       runId: run.runId,
       status: "running",
-      message: `Container ${run.containerId || config.runtime.containerName} is running.`
+      message: `Viewer websocket is ready at ${buildWsUrl()}.`
     });
   } catch (error) {
     finalizeRun(run, {

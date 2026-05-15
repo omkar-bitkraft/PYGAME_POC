@@ -37,7 +37,7 @@ This checklist converts the workbook into an implementation sequence that can be
 | T10 | `done` | Implement `POST /run` request validation and run creation | T9 | Empty code is rejected with `400`; valid requests produce a `runId` and startup metadata |
 | T11 | `done` | Implement `POST /stop` for the active run | T9 | Active runtime container can be stopped cleanly and repeat calls are handled safely |
 | T12 | `done` | Implement `GET /health` for readiness and active-run reporting | T9 | Health endpoint reports backend availability and whether a run is active |
-| T13 | `done` | Implement code write and Docker start orchestration | T10, T15 | Backend writes code to `runtime/workdir/main.py`, starts a fresh container, and tracks container lifecycle |
+| T13 | `done` | Implement code write and Docker start orchestration | T10, T15 | Backend writes code to a generated runtime workdir, starts a fresh container, and tracks container lifecycle |
 | T14 | `done` | Enforce single active session semantics | T10, T11, T13 | Starting a new run stops and removes the prior active runtime before launching the next one |
 
 ## Phase 5: Log/Event Streaming
@@ -91,7 +91,7 @@ Follow this order unless a blocker requires a small local reorder:
 23. T23
 
 ## Acceptance Checklist
-- `POST /run` writes code to `runtime/workdir/main.py`
+- `POST /run` writes code to `.runtime-generated/workdir/main.py`
 - runtime container starts successfully
 - pygame window is visible through noVNC
 - stdout and stderr appear in the terminal panel

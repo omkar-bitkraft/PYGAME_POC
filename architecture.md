@@ -39,7 +39,7 @@ Request body:
 Behavior:
 - reject empty or whitespace-only code with `400`
 - stop and remove any active runtime container before starting a new run
-- write request code to `runtime/workdir/main.py`
+- write request code to the generated runtime path at `.runtime-generated/workdir/main.py`
 - ensure the runtime image is available
 - start a fresh runtime container
 - create a new `runId`
@@ -135,13 +135,14 @@ data: {"runId":"run_20260514_001","code":0}
 1. Frontend sends `POST /run` with the current textarea contents.
 2. Backend validates the payload.
 3. Backend stops the existing active run if present.
-4. Backend writes submitted code to `runtime/workdir/main.py`.
+4. Backend writes submitted code to `.runtime-generated/workdir/main.py`.
 5. Backend verifies the runtime image exists, or builds it before first use.
 6. Backend launches a fresh container with a known container name and port mapping.
 7. Backend attaches to container logs and relays them into the SSE stream.
-8. Frontend opens the local viewer page with the websocket URL and subscribes to the run stream.
-9. User sees both terminal output and the pygame display.
-10. On Stop, rerun, or process exit, backend terminates the container, emits terminal events, and resets active state.
+8. Backend marks the run as `running` only after the viewer websocket is reachable.
+9. Frontend opens the local viewer page with the websocket URL and subscribes to the run stream.
+10. User sees both terminal output and the pygame display.
+11. On Stop, rerun, or process exit, backend terminates the container, emits terminal events, and resets active state.
 
 ## Runtime Container Responsibilities
 The runtime image must contain:
@@ -159,7 +160,8 @@ The launcher script must:
 - run `python main.py`
 
 The container should:
-- mount or copy `runtime/workdir/main.py`
+- mount generated runtime code into `/opt/runtime/workdir/main.py` for live runs
+- keep the checked-in `runtime/workdir/main.py` sample as a bootstrap/example
 - expose host port `6080`
 - be removable after stop or exit
 
@@ -181,19 +183,21 @@ Frontend behavior:
 - disable or debounce Run during transition states
 - clear prior logs when a new run starts
 - reconnect or recreate the SSE stream per run
-- keep the iframe pointed at the current local viewer page for the active run
+- keep the iframe in standby until the backend marks the viewer websocket ready
+- keep the iframe pointed at the current local viewer page for the active run once ready
 
 ## Backend Architecture
 Recommended backend modules:
 - route layer for HTTP endpoints
 - runtime service for container start/stop and state tracking
 - stream manager for SSE subscribers
-- file writer utility for `runtime/workdir/main.py`
+- file writer utility for `.runtime-generated/workdir/main.py`
 
 Backend invariants:
 - at most one active run at a time
 - each run has one `runId`
 - active state is authoritative in memory for the POC
+- `running` means the viewer websocket is reachable, not only that the container exists
 - stopping is idempotent
 
 ## Non-Goals For This POC
@@ -211,6 +215,7 @@ Backend invariants:
 - image build failure
 - container startup failure
 - noVNC cannot connect to `6080`
+- viewer websocket is not ready immediately after container start
 - Python process exits immediately
 - stale active container blocks rerun
 

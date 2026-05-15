@@ -6,6 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backendRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(backendRoot, "..");
+const generatedRuntimeRoot = path.join(repoRoot, ".runtime-generated");
 
 dotenv.config({ path: path.join(repoRoot, ".env") });
 dotenv.config({ path: path.join(backendRoot, ".env"), override: true });
@@ -23,8 +24,9 @@ export const config = {
     novncPort: asNumber(process.env.NOVNC_PORT, 6080),
     vncPort: asNumber(process.env.VNC_PORT, 5900),
     repoRootPath: repoRoot,
+    generatedRootPath: generatedRuntimeRoot,
     runtimeRootPath: path.join(repoRoot, "runtime"),
-    workdirHostPath: path.join(repoRoot, "runtime", "workdir"),
+    workdirHostPath: path.join(generatedRuntimeRoot, "workdir"),
     workdirContainerPath: "/opt/runtime/workdir"
   }
 };

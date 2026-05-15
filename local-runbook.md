@@ -29,6 +29,8 @@ Before implementation or local testing, confirm:
 
 ```text
 /
+  .runtime-generated/
+    workdir/
   frontend/
   backend/
   runtime/
@@ -100,7 +102,8 @@ Use the repo sample bootstrap first. The first-pass sample should:
 - create a visible window
 - render a solid background or simple moving shape
 - print one or more stdout lines for terminal verification
-- stay alive long enough to confirm noVNC rendering
+- stay alive until the user clicks Stop or closes the window
+- seed the generated runtime workdir automatically if no submitted file exists yet
 
 ### Verify the full flow
 Confirm all of the following:
@@ -112,6 +115,7 @@ Confirm all of the following:
 - pygame window is visible
 - clicking Stop terminates the run
 - clicking Run again starts a fresh clean rerun
+- submitted code is written to the ignored generated runtime directory, not the checked-in sample file
 
 ## Validation Findings On May 15, 2026
 - Frontend dependencies install successfully with `npm.cmd install`.
@@ -171,6 +175,7 @@ Expected response:
 - includes `runId`
 - includes `viewerUrl`
 - includes `wsUrl`
+- keeps the viewer iframe in standby until the runtime emits `running`
 
 ### Stop request
 Expected request:
@@ -214,6 +219,7 @@ Actions:
 - confirm runtime container is running
 - confirm port `6080` is mapped and reachable
 - confirm launcher started `x11vnc` and `websockify`
+- confirm the run reached `running`; before that, the frontend intentionally keeps the viewer in standby
 - confirm frontend is using the correct websocket target `ws://localhost:6080/websockify`
 - if the page was loaded before the May 15, 2026 viewer-path fix, hard refresh the browser so the updated frontend bundle is used
 - confirm the app is idle before refresh; the viewer should not attempt to connect until an active run exists
