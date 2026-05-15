@@ -1,0 +1,14 @@
+services:
+  runtime:
+    build:
+      context: ./runtime
+    image: ${RUNTIME_IMAGE:-pygame-poc-runtime}
+    container_name: ${RUNTIME_CONTAINER_NAME:-pygame-poc-active}
+    environment:
+      DISPLAY: :99
+      VNC_PORT: ${VNC_PORT:-5900}
+      NOVNC_PORT: ${NOVNC_PORT:-6080}
+    ports:
+      - "${NOVNC_PORT:-6080}:6080"
+    volumes:
+      - ./runtime/workdir:/opt/runtime/workdir
