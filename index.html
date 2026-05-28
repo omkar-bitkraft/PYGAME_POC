@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pygame IDE — POC</title>
+
+<!-- AceEditor -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/ace.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-python.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/theme-monokai.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #1e1e2e;
+    --surface:  #2a2a3d;
+    --border:   #3d3d5c;
+    --accent:   #7c6af7;
+    --green:    #50fa7b;
+    --red:      #ff5555;
+    --yellow:   #f1fa8c;
+    --text:     #cdd6f4;
+    --muted:    #6c7086;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Toolbar ─────────────────────────────────────────────────── */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  #toolbar .logo {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--accent);
+    margin-right: 8px;
+  }
+
+  button {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  #run-btn  { background: var(--green);  color: #1e1e2e; }
+  #stop-btn { background: var(--red);    color: #fff;    }
+  #run-btn:not(:disabled):hover, #stop-btn:not(:disabled):hover { opacity: .85; }
+
+  #status-badge {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: var(--border);
+    color: var(--muted);
+    transition: all .3s;
+  }
+  #status-badge.running { background: #1a3a2a; color: var(--green); }
+  #status-badge.error   { background: #3a1a1a; color: var(--red);   }
+
+  #volume-wrap {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #volume { width: 80px; accent-color: var(--accent); }
+
+  /* ── Main layout ─────────────────────────────────────────────── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Editor panel ────────────────────────────────────────────── */
+  #editor-panel {
+    display: flex;
+    flex-direction: column;
+    width: 50%;
+    border-right: 2px solid var(--border);
+  }
+
+  #editor-wrap {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  #editor {
+    width: 100%;
+    height: 100%;
+    font-size: 14px;
+  }
+
+  #console {
+    height: 160px;
+    background: #0d0d1a;
+    padding: 8px 12px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .console-line { line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+  .console-line.stdout { color: #cdd6f4; }
+  .console-line.stderr { color: var(--red); }
+  .console-line.status { color: var(--yellow); }
+  .console-line.system { color: var(--muted); font-style: italic; }
+
+  /* ── Game panel ──────────────────────────────────────────────── */
+  #game-panel {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a14;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #game-canvas {
+    display: block;
+    cursor: crosshair;
+    outline: none;
+    max-width: 100%;
+    max-height: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #000;
+  }
+
+  #placeholder {
+    text-align: center;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  #placeholder .icon { font-size: 48px; margin-bottom: 12px; }
+  #placeholder p { font-size: 14px; }
+
+  /* Frame counter overlay */
+  #fps-counter {
+    position: absolute;
+    top: 8px; right: 12px;
+    font-size: 11px;
+    color: var(--muted);
+    background: rgba(0,0,0,.5);
+    padding: 2px 6px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ── Toolbar ─────────────────────────────────────────────────── -->
+<div id="toolbar">
+  <span class="logo">🎮 Pygame IDE</span>
+  <button id="run-btn">▶ Run</button>
+  <button id="stop-btn" disabled>■ Stop</button>
+  <span id="status-badge">Idle</span>
+  <div id="volume-wrap">
+    🔊 <input type="range" id="volume" min="0" max="1" step="0.05" value="0.8">
+  </div>
+</div>
+
+<!-- ── Main layout ─────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Editor + Console -->
+  <div id="editor-panel">
+    <div id="editor-wrap">
+      <div id="editor"></div>
+    </div>
+    <div id="console"></div>
+  </div>
+
+  <!-- Game canvas -->
+  <div id="game-panel">
+    <div id="placeholder">
+      <div class="icon">🐍</div>
+      <p>Click <strong>Run</strong> to start your pygame game</p>
+    </div>
+    <canvas id="game-canvas" width="800" height="600" tabindex="0" style="display:none"></canvas>
+    <div id="fps-counter" style="display:none">-- fps</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ── AceEditor ─────────────────────────────────────────────────────
+const editor = ace.edit('editor');
+editor.setTheme('ace/theme/monokai');
+editor.session.setMode('ace/mode/python');
+editor.setOptions({
+  fontSize: '14px',
+  showPrintMargin: false,
+  enableBasicAutocompletion: true,
+  tabSize: 4,
+  useSoftTabs: true,
+});
+const FALLBACK_SAMPLE_CODE = `import pygame
+import sys
+import math
+
+pygame.init()
+WIDTH, HEIGHT = 800, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Bouncing Ball")
+
+clock = pygame.time.Clock()
+WHITE = (255, 255, 255)
+BG    = (30, 30, 50)
+
+pygame.mixer.init()
+beep = pygame.mixer.Sound(buffer=bytes(
+    [int(127 + 127 * math.sin(2 * math.pi * 440 * i / 44100)) for i in range(4410)]
+))
+
+ball = {"x": 400, "y": 300, "vx": 4, "vy": 3, "r": 30}
+color = (124, 106, 247)
+bounces = 0
+
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            ball["x"], ball["y"] = event.pos
+            beep.play()
+
+    ball["x"] += ball["vx"]
+    ball["y"] += ball["vy"]
+
+    if ball["x"] - ball["r"] <= 0 or ball["x"] + ball["r"] >= WIDTH:
+        ball["vx"] *= -1
+        bounces += 1
+        beep.play()
+    if ball["y"] - ball["r"] <= 0 or ball["y"] + ball["r"] >= HEIGHT:
+        ball["vy"] *= -1
+        bounces += 1
+        beep.play()
+
+    screen.fill(BG)
+    pygame.draw.circle(screen, color, (int(ball["x"]), int(ball["y"])), ball["r"])
+
+    font = pygame.font.SysFont(None, 28)
+    text = font.render(f"Bounces: {bounces}  |  Click to teleport ball", True, WHITE)
+    screen.blit(text, (10, 10))
+
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
+sys.exit()
+`;
+
+// ── State ─────────────────────────────────────────────────────────
+// Unique session ID per browser tab
+const SESSION_ID = 'sess_' + Math.random().toString(36).slice(2, 9);
+
+let wsControl = null;
+let wsVideo   = null;
+let wsAudio   = null;
+let audioCtx  = null;
+let gainNode  = null;
+let scriptNode = null;
+let audioQueue  = [];
+let audioQueueOffset = 0;
+let queuedFrames = 0;
+let audioUnlockHintShown = false;
+let isRunning   = false;
+const AUDIO_SAMPLE_RATE = 44100;
+const AUDIO_CHANNELS = 2;
+const AUDIO_BUFFER_SIZE = 512;
+
+// ── DOM refs ──────────────────────────────────────────────────────
+const runBtn     = document.getElementById('run-btn');
+const stopBtn    = document.getElementById('stop-btn');
+const statusEl   = document.getElementById('status-badge');
+const consoleEl  = document.getElementById('console');
+const canvas     = document.getElementById('game-canvas');
+const placeholder = document.getElementById('placeholder');
+const fpsCounter = document.getElementById('fps-counter');
+const volumeEl   = document.getElementById('volume');
+const ctx2d      = canvas.getContext('2d');
+
+// FPS tracking
+let frameCount = 0, lastFpsTime = performance.now();
+
+// ── Button handlers ───────────────────────────────────────────────
+runBtn.addEventListener('click', startSession);
+stopBtn.addEventListener('click', stopSession);
+
+volumeEl.addEventListener('input', () => {
+  if (gainNode) gainNode.gain.value = parseFloat(volumeEl.value);
+});
+
+window.addEventListener('pointerdown', unlockAudio, { passive: true });
+window.addEventListener('keydown', unlockAudio);
+
+// ── Session control ───────────────────────────────────────────────
+function startSession() {
+  if (isRunning) stopSession();
+
+  const code = editor.getValue();
+  const host = location.host;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+
+  unlockAudio();
+
+  setStatus('connecting', 'Connecting...');
+  clearConsole();
+
+  // ── Control WebSocket ─────────────────────────────────────────
+  wsControl = new WebSocket(`${proto}://${host}/control/${SESSION_ID}`);
+
+  wsControl.onopen = () => {
+    wsControl.send(JSON.stringify({ type: 'run', code }));
+  };
+
+  wsControl.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'ready') {
+      setStatus('running', 'Running');
+      setRunning(true);
+      connectVideoWs(proto, host);
+      connectAudioWs(proto, host);
+
+    } else if (msg.type === 'status') {
+      log(msg.message, 'status');
+
+    } else if (msg.type === 'stdout') {
+      log(msg.data, 'stdout');
+
+    } else if (msg.type === 'stderr') {
+      log(msg.data, 'stderr');
+
+    } else if (msg.type === 'error') {
+      log('Error: ' + msg.message, 'stderr');
+      setStatus('error', 'Error');
+      setRunning(false);
+
+    } else if (msg.type === 'exit') {
+      log(`Process exited (code ${msg.code})`, 'system');
+      setStatus('idle', 'Idle');
+      setRunning(false);
+
+    } else if (msg.type === 'stopped') {
+      setStatus('idle', 'Idle');
+      setRunning(false);
+    }
+  };
+
+  wsControl.onclose = () => {
+    if (isRunning) {
+      setStatus('idle', 'Disconnected');
+      setRunning(false);
+    }
+  };
+}
+
+function stopSession() {
+  wsControl?.send(JSON.stringify({ type: 'stop' }));
+  wsControl?.close();
+  wsVideo?.close();
+  wsAudio?.close();
+  wsControl = wsVideo = wsAudio = null;
+  cleanupAudio();
+  setRunning(false);
+  setStatus('idle', 'Idle');
+}
+
+// ── Video WebSocket ───────────────────────────────────────────────
+function connectVideoWs(proto, host) {
+  wsVideo = new WebSocket(`${proto}://${host}/video/${SESSION_ID}`);
+  wsVideo.binaryType = 'blob';
+
+  // Show canvas, hide placeholder
+  canvas.style.display = 'block';
+  placeholder.style.display = 'none';
+  fpsCounter.style.display = 'block';
+
+  wsVideo.onmessage = (e) => {
+    // Decode JPEG blob and draw to canvas
+    const url = URL.createObjectURL(e.data);
+    const img  = new Image();
+    img.onload = () => {
+      ctx2d.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+
+      // FPS counter
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 1000) {
+        fpsCounter.textContent = frameCount + ' fps';
+        frameCount = 0;
+        lastFpsTime = now;
+      }
+    };
+    img.src = url;
+  };
+
+  wsVideo.onclose = () => {
+    // Show placeholder again when stream ends
+    if (!isRunning) {
+      canvas.style.display = 'none';
+      placeholder.style.display = 'block';
+      fpsCounter.style.display = 'none';
+    }
+  };
+}
+
+// ── Audio WebSocket (MediaSource Extensions) ──────────────────────
+function connectAudioWs(proto, host) {
+  unlockAudio();
+
+  wsAudio = new WebSocket(`${proto}://${host}/audio/${SESSION_ID}`);
+  wsAudio.binaryType = 'arraybuffer';
+  wsAudio.onmessage = (e) => {
+    enqueuePcmChunk(e.data);
+  };
+}
+
+function cleanupAudio() {
+  audioQueue = [];
+  audioQueueOffset = 0;
+  queuedFrames = 0;
+  if (scriptNode) {
+    scriptNode.disconnect();
+    scriptNode.onaudioprocess = null;
+    scriptNode = null;
+  }
+  if (gainNode) {
+    gainNode.disconnect();
+    gainNode = null;
+  }
+  if (audioCtx) {
+    audioCtx.close().catch(() => {});
+    audioCtx = null;
+  }
+}
+
+function unlockAudio() {
+  ensureAudioPipeline();
+  audioCtx?.resume()
+    .then(() => {
+      if (audioCtx?.state === 'running') audioUnlockHintShown = false;
+    })
+    .catch(() => {
+      if (!audioUnlockHintShown) {
+        log('Audio is blocked by the browser. Click anywhere in the page to enable sound.', 'system');
+        audioUnlockHintShown = true;
+      }
+    });
+}
+
+function ensureAudioPipeline() {
+  if (audioCtx) return;
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new AudioContextCtor({ sampleRate: AUDIO_SAMPLE_RATE });
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = parseFloat(volumeEl.value);
+  scriptNode = audioCtx.createScriptProcessor(AUDIO_BUFFER_SIZE, 0, AUDIO_CHANNELS);
+
+  scriptNode.onaudioprocess = (event) => {
+    const left = event.outputBuffer.getChannelData(0);
+    const right = event.outputBuffer.getChannelData(1);
+
+    for (let i = 0; i < left.length; i++) {
+      if (audioQueue.length === 0) {
+        left[i] = 0;
+        right[i] = 0;
+        continue;
+      }
+
+      const chunk = audioQueue[0];
+      left[i] = chunk[audioQueueOffset] || 0;
+      right[i] = chunk[audioQueueOffset + 1] || left[i];
+
+      audioQueueOffset += AUDIO_CHANNELS;
+      queuedFrames = Math.max(0, queuedFrames - 1);
+
+      if (audioQueueOffset >= chunk.length) {
+        audioQueue.shift();
+        audioQueueOffset = 0;
+      }
+    }
+  };
+
+  scriptNode.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+}
+
+function enqueuePcmChunk(buffer) {
+  if (!buffer || buffer.byteLength === 0) return;
+
+  const samples = new Int16Array(buffer);
+  const pcm = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    pcm[i] = samples[i] / 32768;
+  }
+
+  audioQueue.push(pcm);
+  queuedFrames += pcm.length / AUDIO_CHANNELS;
+
+  const maxQueuedFrames = Math.floor(AUDIO_SAMPLE_RATE * 0.12);
+  const targetQueuedFrames = Math.floor(AUDIO_SAMPLE_RATE * 0.04);
+  while (queuedFrames > maxQueuedFrames && audioQueue.length > 1) {
+    const dropped = audioQueue.shift();
+    queuedFrames -= Math.floor(dropped.length / AUDIO_CHANNELS);
+    audioQueueOffset = 0;
+    if (queuedFrames <= targetQueuedFrames) break;
+  }
+}
+
+// ── Canvas input capture ──────────────────────────────────────────
+// Mouse events
+canvas.addEventListener('mousemove', (e) => {
+  if (!isRunning) return;
+  const { x, y } = canvasPos(e);
+  sendInput({ type: 'mousemove', x, y });
+});
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!isRunning) return;
+  unlockAudio();
+  canvas.focus();   // ensure canvas receives keyboard events
+  const { x, y } = canvasPos(e);
+  sendInput({ type: 'mousedown', button: e.button + 1, x, y });
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!isRunning) return;
+  const { x, y } = canvasPos(e);
+  sendInput({ type: 'mouseup', button: e.button + 1, x, y });
+});
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Keyboard events — canvas must have tabindex="0" and be focused
+canvas.addEventListener('keydown', (e) => {
+  if (!isRunning) return;
+  e.preventDefault();  // don't scroll page
+  sendInput({ type: 'keydown', code: e.code, char: e.key.length === 1 ? e.key : '' });
+});
+
+canvas.addEventListener('keyup', (e) => {
+  if (!isRunning) return;
+  sendInput({ type: 'keyup', code: e.code, char: e.key.length === 1 ? e.key : '' });
+});
+
+function canvasPos(e) {
+  const r     = canvas.getBoundingClientRect();
+  // Scale mouse coords to pygame canvas coordinates
+  const scaleX = canvas.width  / r.width;
+  const scaleY = canvas.height / r.height;
+  return {
+    x: Math.round((e.clientX - r.left) * scaleX),
+    y: Math.round((e.clientY - r.top)  * scaleY),
+  };
+}
+
+function sendInput(event) {
+  if (wsControl?.readyState === WebSocket.OPEN) {
+    wsControl.send(JSON.stringify({ type: 'input', event }));
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────
+function setRunning(val) {
+  isRunning   = val;
+  runBtn.disabled  = val;
+  stopBtn.disabled = !val;
+}
+
+function setStatus(cls, text) {
+  statusEl.className = 'status-badge ' + cls;
+  statusEl.textContent = text;
+}
+
+function log(text, cls = 'stdout') {
+  const line = document.createElement('div');
+  line.className = 'console-line ' + cls;
+  line.textContent = text.trimEnd();
+  consoleEl.appendChild(line);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+function clearConsole() {
+  consoleEl.innerHTML = '';
+}
+
+async function loadInitialCode() {
+  try {
+    const response = await fetch('/bounce_ball.py', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Sample load failed: ${response.status}`);
+    editor.setValue(await response.text(), -1);
+  } catch (err) {
+    editor.setValue(FALLBACK_SAMPLE_CODE, -1);
+    log(`Falling back to built-in sample: ${err.message}`, 'system');
+  }
+}
+
+// ── Resize editor to fill its container ──────────────────────────
+function resizeEditor() {
+  const wrap  = document.getElementById('editor-wrap');
+  const edEl  = document.getElementById('editor');
+  edEl.style.height = wrap.clientHeight + 'px';
+  editor.resize();
+}
+window.addEventListener('resize', resizeEditor);
+resizeEditor();
+loadInitialCode();
+</script>
+</body>
+</html>
