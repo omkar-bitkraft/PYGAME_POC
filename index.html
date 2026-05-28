@@ -287,6 +287,8 @@ sys.exit()
 // ── State ─────────────────────────────────────────────────────────
 // Unique session ID per browser tab
 const SESSION_ID = 'sess_' + Math.random().toString(36).slice(2, 9);
+const backendUrl = resolveBackendUrl();
+const wsBaseUrl = toWebSocketBaseUrl(backendUrl);
 
 let wsControl = null;
 let wsVideo   = null;
@@ -333,8 +335,6 @@ function startSession() {
   if (isRunning) stopSession();
 
   const code = editor.getValue();
-  const host = location.host;
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 
   unlockAudio();
 
@@ -342,7 +342,7 @@ function startSession() {
   clearConsole();
 
   // ── Control WebSocket ─────────────────────────────────────────
-  wsControl = new WebSocket(`${proto}://${host}/control/${SESSION_ID}`);
+  wsControl = new WebSocket(`${wsBaseUrl}/control/${SESSION_ID}`);
 
   wsControl.onopen = () => {
     wsControl.send(JSON.stringify({ type: 'run', code }));
@@ -354,8 +354,8 @@ function startSession() {
     if (msg.type === 'ready') {
       setStatus('running', 'Running');
       setRunning(true);
-      connectVideoWs(proto, host);
-      connectAudioWs(proto, host);
+      connectVideoWs();
+      connectAudioWs();
 
     } else if (msg.type === 'status') {
       log(msg.message, 'status');
@@ -402,8 +402,8 @@ function stopSession() {
 }
 
 // ── Video WebSocket ───────────────────────────────────────────────
-function connectVideoWs(proto, host) {
-  wsVideo = new WebSocket(`${proto}://${host}/video/${SESSION_ID}`);
+function connectVideoWs() {
+  wsVideo = new WebSocket(`${wsBaseUrl}/video/${SESSION_ID}`);
   wsVideo.binaryType = 'blob';
 
   // Show canvas, hide placeholder
@@ -442,10 +442,10 @@ function connectVideoWs(proto, host) {
 }
 
 // ── Audio WebSocket (MediaSource Extensions) ──────────────────────
-function connectAudioWs(proto, host) {
+function connectAudioWs() {
   unlockAudio();
 
-  wsAudio = new WebSocket(`${proto}://${host}/audio/${SESSION_ID}`);
+  wsAudio = new WebSocket(`${wsBaseUrl}/audio/${SESSION_ID}`);
   wsAudio.binaryType = 'arraybuffer';
   wsAudio.onmessage = (e) => {
     enqueuePcmChunk(e.data);
@@ -622,9 +622,27 @@ function clearConsole() {
   consoleEl.innerHTML = '';
 }
 
+function resolveBackendUrl() {
+  const rawBackend = new URLSearchParams(window.location.search).get('backend');
+  if (!rawBackend) return window.location.origin;
+
+  try {
+    return new URL(rawBackend).origin;
+  } catch (err) {
+    log(`Invalid backend URL "${rawBackend}", falling back to page origin.`, 'system');
+    return window.location.origin;
+  }
+}
+
+function toWebSocketBaseUrl(httpBaseUrl) {
+  const url = new URL(httpBaseUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.origin;
+}
+
 async function loadInitialCode() {
   try {
-    const response = await fetch('/bounce_ball.py', { cache: 'no-store' });
+    const response = await fetch('./bounce_ball.py', { cache: 'no-store' });
     if (!response.ok) throw new Error(`Sample load failed: ${response.status}`);
     editor.setValue(await response.text(), -1);
   } catch (err) {
