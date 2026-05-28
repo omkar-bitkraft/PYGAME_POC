@@ -300,7 +300,7 @@ function dockerExec(id, cmd) {
 function stageWorkspaceAssets(s) {
   return dockerExec(
     s.containerId,
-    `if [ -d ${CONTAINER_WORKDIR}/assets ]; then cp -a ${CONTAINER_WORKDIR}/assets/. ${CONTAINER_WORKDIR}/; fi`
+    `if [ -d ${CONTAINER_WORKDIR}/assets ]; then cp -r ${CONTAINER_WORKDIR}/assets/. ${CONTAINER_WORKDIR}/; fi`
   );
 }
 
