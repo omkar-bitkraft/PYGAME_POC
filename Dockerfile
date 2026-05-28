@@ -25,21 +25,22 @@ RUN pip3 install \
     websockets==12.0 \
     Pillow==10.2.0
 
-# PulseAudio config — allow non-root, disable autospawn lock
-RUN mkdir -p /etc/pulse && cat > /etc/pulse/client.conf << 'EOF'
-autospawn = no
-daemon-binary = /usr/bin/pulseaudio
-EOF
+# PulseAudio config - allow non-root, disable autospawn lock
+RUN mkdir -p /etc/pulse \
+    && printf '%s\n' \
+    'autospawn = no' \
+    'daemon-binary = /usr/bin/pulseaudio' \
+    > /etc/pulse/client.conf
 
-RUN cat > /etc/pulse/default.pa << 'EOF'
-load-module module-null-sink sink_name=game_audio sink_properties=device.description="GameAudio"
-load-module module-native-protocol-unix auth-anonymous=1
-EOF
+RUN printf '%s\n' \
+    'load-module module-null-sink sink_name=game_audio sink_properties=device.description="GameAudio"' \
+    'load-module module-native-protocol-unix auth-anonymous=1' \
+    > /etc/pulse/default.pa
 
 # Copy the pygame runner
 COPY pygame_runner.py /opt/pygame_runner.py
 
-# Startup script — boots PulseAudio then waits
+# Startup script - boots PulseAudio then waits
 COPY start_pulse.sh /opt/start_pulse.sh
 RUN chmod +x /opt/start_pulse.sh
 
